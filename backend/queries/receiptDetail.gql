@@ -1,0 +1,63 @@
+query ExampleQuery($posReceiptDetailsId: String!) {
+  posReceiptDetails(id: $posReceiptDetailsId) {
+    id
+    payments {
+      amount {
+        amount
+      }
+    }
+    products {
+      id
+      amount {
+        amount
+      }
+      quantity
+      name
+      deposit {
+        amount
+      }
+      price {
+        amount
+      }
+      indicators {
+        name
+        discount
+        percentage
+      }
+      weight {
+        amount
+        unit
+      }
+    }
+    discounts {
+      amount {
+        amount
+      }
+      name
+      type
+    }
+    discountPersonal {
+      amount {
+        amount
+      }
+      description
+    }
+    storeInfo
+    promotions {
+      name
+      quantity
+    }
+    address {
+      city
+      postalCode
+      street
+      houseNumber
+    }
+    subtotalProducts {
+      amount {
+        amount
+      }
+      quantity
+    }
+  }
+}

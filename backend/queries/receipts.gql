@@ -1,0 +1,17 @@
+query GetReceipts {
+  posReceiptsPage {
+    posReceipts {
+      id
+      dateTime
+      totalAmount {
+        amount
+      }
+    }
+    pagination {
+      key
+      totalElements
+      offset
+      limit
+    }
+  }
+}

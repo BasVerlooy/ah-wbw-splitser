@@ -1,0 +1,7 @@
+.git
+.venv
+frontend/
+screenshots/
+receipts.db
+__pycache__
+*.pyc
