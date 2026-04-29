@@ -6,7 +6,7 @@ from typing import Optional
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from sqlalchemy import text
 
@@ -612,12 +612,22 @@ def _build_expense_args(receipt, group, splitser_group: str = "") -> dict:
         payer_entry = next((r for r in data["roommates"] if r.get("is_default_payer")), None)
 
     if not payer_entry:
-        raise HTTPException(
-            status_code=422,
-            detail="No payer set for this split and no default payer configured. Set a default payer on a roommate first.",
-        )
-
-    payer_id = payer_entry["splitser_member_id"]
+        # Default payer may exist but not be a member of this split group — query all roommates.
+        db = object_session(group)
+        default_payer = db.query(Roommate).filter(Roommate.is_default_payer == 1).first()
+        if not default_payer:
+            raise HTTPException(
+                status_code=422,
+                detail="No payer set for this split and no default payer configured. Set a default payer on a roommate first.",
+            )
+        if not default_payer.splitser_member_id:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Default payer '{default_payer.name}' has no Splitser member ID configured.",
+            )
+        payer_id = default_payer.splitser_member_id
+    else:
+        payer_id = payer_entry["splitser_member_id"]
 
     return dict(name=name, payed_by_member_id=payer_id, payed_on=payed_on, total_cents=total_cents, shares=shares, group=splitser_group)
 
