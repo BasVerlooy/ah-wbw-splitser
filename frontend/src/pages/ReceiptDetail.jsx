@@ -337,16 +337,21 @@ export default function ReceiptDetail() {
                 {/* Paid by */}
                 <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.85rem' }}>
                   <span className="muted" style={{ whiteSpace: 'nowrap' }}>Paid by</span>
-                  <select
-                    value={splitPaidBy[split.id] ?? ''}
-                    onChange={(e) => setSplitPaidBy((prev) => ({ ...prev, [split.id]: e.target.value ? Number(e.target.value) : null }))}
-                    style={{ flex: 1, fontSize: '0.8rem', padding: '0.25rem 0.4rem' }}
-                  >
-                    <option value="">Auto (highest share)</option>
-                    {roommates.map((r) => (
-                      <option key={r.id} value={r.id}>{r.name}</option>
-                    ))}
-                  </select>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                    <select
+                      value={splitPaidBy[split.id] ?? ''}
+                      onChange={(e) => setSplitPaidBy((prev) => ({ ...prev, [split.id]: e.target.value ? Number(e.target.value) : null }))}
+                      style={{ fontSize: '0.8rem', padding: '0.25rem 0.4rem', borderColor: !splitPaidBy[split.id] ? '#e53e3e' : undefined }}
+                    >
+                      <option value="" disabled>Select payer…</option>
+                      {roommates.map((r) => (
+                        <option key={r.id} value={r.id}>{r.name}</option>
+                      ))}
+                    </select>
+                    {!splitPaidBy[split.id] && (
+                      <span style={{ color: '#e53e3e', fontSize: '0.75rem' }}>Select a payer before pushing to Splitser</span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Override amount */}
@@ -511,13 +516,16 @@ export default function ReceiptDetail() {
           <select
             value={newPaidBy ?? ''}
             onChange={(e) => setNewPaidBy(e.target.value ? Number(e.target.value) : null)}
-            style={{ marginBottom: '1.25rem' }}
+            style={{ marginBottom: newPaidBy ? '1.25rem' : '0.25rem', borderColor: !newPaidBy ? '#e53e3e' : undefined }}
           >
-            <option value="">Auto (highest share)</option>
+            <option value="" disabled>Select payer…</option>
             {roommates.map((rm) => (
               <option key={rm.id} value={rm.id}>{rm.name}</option>
             ))}
           </select>
+          {!newPaidBy && (
+            <p style={{ color: '#e53e3e', fontSize: '0.8rem', marginBottom: '1rem', marginTop: 0 }}>Select a payer before pushing to Splitser</p>
+          )}
 
           <p style={{ fontWeight: 600, marginBottom: '0.35rem', fontSize: '0.9rem' }}>Override amount (optional)</p>
           <input
