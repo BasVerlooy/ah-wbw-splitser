@@ -1,7 +1,17 @@
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
 from sqlalchemy import Column, Float, ForeignKey, Integer, String, create_engine
 from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
 
-DATABASE_URL = "sqlite:///./receipts.db"
+load_dotenv()
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+DATABASE_FILE = BASE_DIR / "receipts.db" / "receipts.db"
+DATABASE_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DATABASE_FILE.as_posix()}")
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

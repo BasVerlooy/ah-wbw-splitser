@@ -34,7 +34,7 @@ def _headers(cookie: str = "") -> dict:
     return {
         "Cookie": cookie or os.getenv("COOKIE", ""),
         "Content-Type": "application/json",
-        "Accept": "application/json",
+        "Accept": "application/graphql-response+json,application/json;q=0.9",
         "User-Agent": (
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -44,7 +44,7 @@ def _headers(cookie: str = "") -> dict:
 
 
 def _gql(client: httpx.Client, query: str, variables: Optional[dict] = None, cookie: str = "") -> dict:
-    payload: dict = {"query": query}
+    payload: dict = {"query": query, "operationName": "GetReceipts"}
     if variables:
         payload["variables"] = variables
 

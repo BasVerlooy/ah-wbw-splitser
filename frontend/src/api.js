@@ -5,8 +5,15 @@ async function request(method, path, body) {
   if (body !== undefined) opts.body = JSON.stringify(body)
   const res = await fetch(`${BASE}${path}`, opts)
   if (res.status === 204) return null
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.detail ?? res.statusText)
+  const text = await res.text()
+  const data = text ? (() => {
+    try {
+      return JSON.parse(text)
+    } catch {
+      return { detail: text }
+    }
+  })() : null
+  if (!res.ok) throw new Error(data?.detail ?? res.statusText)
   return data
 }
 

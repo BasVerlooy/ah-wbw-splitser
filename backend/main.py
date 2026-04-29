@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
+import httpx
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
@@ -244,6 +245,24 @@ def _calc_group(group: SplitGroup) -> dict:
     }
 
 
+def _friendly_ah_error(exc: httpx.HTTPStatusError) -> HTTPException:
+    status_code = exc.response.status_code
+    if status_code == 403:
+        return HTTPException(
+            status_code=403,
+            detail="Albert Heijn rejected the request. Check your AH cookie and try syncing again.",
+        )
+    if status_code == 401:
+        return HTTPException(
+            status_code=401,
+            detail="Albert Heijn authentication failed. Check your AH cookie and try again.",
+        )
+    return HTTPException(
+        status_code=502,
+        detail=f"Albert Heijn request failed with status {status_code}. Please try again later.",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Sync
 # ---------------------------------------------------------------------------
@@ -258,7 +277,10 @@ def sync_receipts(offset: int = 0, db: Session = Depends(get_db)):
     exist and what offset to pass next.
     """
     ah_cookie = _get_setting(db, "ah_cookie") or ""
-    page = ah_client.fetch_receipts_page(offset=offset, cookie=ah_cookie)
+    try:
+        page = ah_client.fetch_receipts_page(offset=offset, cookie=ah_cookie)
+    except httpx.HTTPStatusError as exc:
+        raise _friendly_ah_error(exc) from exc
     receipts = page["receipts"]
     total_available = page["total"]
 
@@ -270,7 +292,10 @@ def sync_receipts(offset: int = 0, db: Session = Depends(get_db)):
             skipped += 1
             continue
 
-        detail = ah_client.fetch_receipt_detail(r["id"], cookie=ah_cookie)
+        try:
+            detail = ah_client.fetch_receipt_detail(r["id"], cookie=ah_cookie)
+        except httpx.HTTPStatusError as exc:
+            raise _friendly_ah_error(exc) from exc
         address = detail.get("address") or {}
 
         receipt = Receipt(
