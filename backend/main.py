@@ -1,12 +1,17 @@
+import logging
 import re
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, object_session
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+logger = logging.getLogger("backend")
 
 from sqlalchemy import text
 
@@ -52,6 +57,18 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AH WBW Splitser", lifespan=lifespan)
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    logger.warning("%s %s -> %s %s", request.method, request.url.path, exc.status_code, exc.detail)
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception("%s %s -> 500 %s", request.method, request.url.path, exc)
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
 # ---------------------------------------------------------------------------
