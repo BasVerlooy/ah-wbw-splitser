@@ -115,7 +115,7 @@ export default function ReceiptDetail() {
       setNewName('')
       setSelectedProducts({})
       setOverrideInput('')
-      setNewPaidBy(null)
+      setNewPaidBy(roommates.find((r) => r.is_default_payer)?.id ?? null)
     } catch (e) {
       alert(e.message)
     } finally {
