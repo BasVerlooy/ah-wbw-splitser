@@ -80,17 +80,8 @@ export default function Roommates() {
                   <td>{r.name}</td>
                   <td style={{ textAlign: 'center' }}>
                     <button
+                      className={`default-payer ${r.is_default_payer ? 'is-active' : ''}`}
                       onClick={() => setDefaultPayer(r.id)}
-                      style={{
-                        background: r.is_default_payer ? '#1a1a1a' : '#fff',
-                        color: r.is_default_payer ? '#fff' : '#555',
-                        border: '1px solid',
-                        borderColor: r.is_default_payer ? '#1a1a1a' : '#ccc',
-                        borderRadius: 6,
-                        padding: '0.25rem 0.65rem',
-                        fontSize: '0.8rem',
-                        cursor: 'pointer',
-                      }}
                     >
                       {r.is_default_payer ? 'Default' : 'Set default'}
                     </button>

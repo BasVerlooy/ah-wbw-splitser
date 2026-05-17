@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { BrowserRouter, NavLink, Route, Routes } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
 import ReceiptDetail from './pages/ReceiptDetail'
@@ -7,6 +8,17 @@ import Settings from './pages/Settings'
 import './index.css'
 
 export default function App() {
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light')
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('theme', theme)
+  }, [theme])
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))
+  }
+
   return (
     <BrowserRouter>
       <nav>
@@ -15,6 +27,11 @@ export default function App() {
         <NavLink to="/receipts">Receipts</NavLink>
         <NavLink to="/roommates">Roommates</NavLink>
         <NavLink to="/settings">Settings</NavLink>
+        <div style={{ marginLeft: 'auto' }}>
+          <button onClick={toggleTheme} className="theme-toggle">
+            {theme === 'light' ? '🌙 Dark' : '☀️ Light'}
+          </button>
+        </div>
       </nav>
       <main>
         <Routes>
