@@ -7,6 +7,10 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen
 
+# Install Playwright browser dependencies and Chromium
+RUN uv run playwright install-deps chromium && \
+    uv run playwright install chromium
+
 COPY backend/ ./backend/
 
 EXPOSE 8000
