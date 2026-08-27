@@ -8,8 +8,7 @@ from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parents[1]
-DATABASE_FILE = BASE_DIR / "receipts.db" / "receipts.db"
-DATABASE_FILE.parent.mkdir(parents=True, exist_ok=True)
+DATABASE_FILE = BASE_DIR / "receipts.db"
 
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DATABASE_FILE.as_posix()}")
 

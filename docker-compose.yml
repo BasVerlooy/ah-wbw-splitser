@@ -3,11 +3,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    environment:
-      DATABASE_URL: sqlite:////app/receipts.db/receipts.db
     ports:
       - "8000:8000"
     volumes:
+      - ./.env:/app/.env:ro
       - ./receipts.db:/app/receipts.db
     develop:
       watch:

@@ -16,7 +16,7 @@ logger = logging.getLogger("backend")
 
 from sqlalchemy import text
 
-from . import ah_client, splitser_client
+from . import ah_auth, ah_client, splitser_client
 from .db import (
     Base, Receipt, ReceiptDiscount, ReceiptProduct,
     Roommate, Setting, SplitGroup, SplitGroupProduct, SplitGroupRoommate,
@@ -293,9 +293,9 @@ def sync_receipts(offset: int = 0, db: Session = Depends(get_db)):
     `next_offset` and `total_available` to determine whether earlier receipts
     exist and what offset to pass next.
     """
-    ah_cookie = _get_setting(db, "ah_cookie") or ""
+    ah_token = _get_setting(db, "ah_access_token") or ""
     try:
-        page = ah_client.fetch_receipts_page(offset=offset, cookie=ah_cookie)
+        page = ah_client.fetch_receipts_page(offset=offset, access_token=ah_token)
     except httpx.HTTPStatusError as exc:
         raise _friendly_ah_error(exc) from exc
     receipts = page["receipts"]
@@ -310,7 +310,7 @@ def sync_receipts(offset: int = 0, db: Session = Depends(get_db)):
             continue
 
         try:
-            detail = ah_client.fetch_receipt_detail(r["id"], cookie=ah_cookie)
+            detail = ah_client.fetch_receipt_detail(r["id"], access_token=ah_token)
         except httpx.HTTPStatusError as exc:
             raise _friendly_ah_error(exc) from exc
         address = detail.get("address") or {}
@@ -745,7 +745,7 @@ def push_all_to_splitser(db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 # Settings
 
-_SETTING_KEYS = {"ah_cookie", "splitser_group"}
+_SETTING_KEYS = {"splitser_group"}
 
 
 def _get_setting(db: Session, key: str) -> Optional[str]:
@@ -763,7 +763,6 @@ def _set_setting(db: Session, key: str, value: Optional[str]) -> None:
 
 
 class SettingsIn(BaseModel):
-    ah_cookie: Optional[str] = None
     splitser_group: Optional[str] = None
 
 
@@ -774,11 +773,43 @@ def get_settings(db: Session = Depends(get_db)):
 
 @app.patch("/settings")
 def patch_settings(body: SettingsIn, db: Session = Depends(get_db)):
-    if body.ah_cookie is not None:
-        _set_setting(db, "ah_cookie", body.ah_cookie or None)
     if body.splitser_group is not None:
         _set_setting(db, "splitser_group", body.splitser_group or None)
     return {key: _get_setting(db, key) for key in _SETTING_KEYS}
+
+
+class AhLoginIn(BaseModel):
+    email: str
+    password: str
+
+
+class AhMfaIn(BaseModel):
+    code: str
+
+
+@app.post("/auth/ah/login")
+async def ah_login(body: AhLoginIn, db: Session = Depends(get_db)):
+    try:
+        result = await ah_auth.start_login(body.email, body.password)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if result["status"] == "success":
+        tokens = result["tokens"]
+        _set_setting(db, "ah_access_token", tokens.get("access_token"))
+        _set_setting(db, "ah_refresh_token", tokens.get("refresh_token"))
+    return result
+
+
+@app.post("/auth/ah/mfa")
+async def ah_mfa(body: AhMfaIn, db: Session = Depends(get_db)):
+    try:
+        result = await ah_auth.submit_mfa(body.code)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    tokens = result["tokens"]
+    _set_setting(db, "ah_access_token", tokens.get("access_token"))
+    _set_setting(db, "ah_refresh_token", tokens.get("refresh_token"))
+    return {"status": "success"}
 
 
 @app.get("/summary")

@@ -1,4 +1,4 @@
-query ExampleQuery($posReceiptDetailsId: String!) {
+query GetReceiptDetail($posReceiptDetailsId: String!) {
   posReceiptDetails(id: $posReceiptDetailsId) {
     id
     payments {

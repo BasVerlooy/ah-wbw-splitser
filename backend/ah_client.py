@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from typing import Optional
 
@@ -8,7 +7,6 @@ QUERIES_DIR = Path(__file__).parent / "queries"
 
 _RECEIPT_DETAIL = (QUERIES_DIR / "receiptDetail.gql").read_text()
 
-# Paginated variant — pagination input object with required offset and limit
 _RECEIPTS_PAGINATED = """
 query GetReceipts($offset: Int!, $limit: Int!) {
   posReceiptsPage(pagination: {offset: $offset, limit: $limit}) {
@@ -29,30 +27,24 @@ query GetReceipts($offset: Int!, $limit: Int!) {
 }
 """
 
+_GQL_URL = "https://api.ah.nl/graphql"
 
-def _headers(cookie: str = "") -> dict:
-    return {
-        "Cookie": cookie or os.getenv("COOKIE", ""),
-        "Content-Type": "application/json",
-        "Accept": "application/graphql-response+json,application/json;q=0.9",
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        ),
-    }
+_HEADERS = {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "User-Agent": "Appie/9.28 (iPhone17,3; iPhone; CPU OS 26_1 like Mac OS X)",
+    "x-client-name": "appie-ios",
+    "x-client-version": "9.28",
+}
 
 
-def _gql(client: httpx.Client, query: str, variables: Optional[dict] = None, cookie: str = "") -> dict:
-    payload: dict = {"query": query, "operationName": "GetReceipts"}
+def _gql(client: httpx.Client, query: str, variables: Optional[dict] = None, access_token: str = "") -> dict:
+    payload: dict = {"query": query}
     if variables:
         payload["variables"] = variables
 
-    resp = client.post(
-        os.getenv("AH_GQL_URL", "https://www.ah.nl/gql"),
-        json=payload,
-        headers=_headers(cookie),
-    )
+    headers = {**_HEADERS, "Authorization": f"Bearer {access_token}"}
+    resp = client.post(_GQL_URL, json=payload, headers=headers)
     resp.raise_for_status()
     data = resp.json()
 
@@ -65,17 +57,9 @@ def _gql(client: httpx.Client, query: str, variables: Optional[dict] = None, coo
 _PAGE_SIZE = 50
 
 
-def fetch_receipts_page(offset: int = 0, cookie: str = "") -> dict:
-    """Fetch one page of receipts from the given offset.
-
-    Returns a dict with:
-      - receipts: list of receipt dicts from this page
-      - total: total number of receipts available on AH
-      - limit: page size used
-      - offset: offset that was used
-    """
+def fetch_receipts_page(offset: int = 0, access_token: str = "") -> dict:
     with httpx.Client(timeout=30.0) as client:
-        data = _gql(client, _RECEIPTS_PAGINATED, {"offset": offset, "limit": _PAGE_SIZE}, cookie=cookie)
+        data = _gql(client, _RECEIPTS_PAGINATED, {"offset": offset, "limit": _PAGE_SIZE}, access_token=access_token)
         page = data["data"]["posReceiptsPage"]
         pagination = page["pagination"]
 
@@ -87,7 +71,7 @@ def fetch_receipts_page(offset: int = 0, cookie: str = "") -> dict:
     }
 
 
-def fetch_receipt_detail(receipt_id: str, cookie: str = "") -> dict:
+def fetch_receipt_detail(receipt_id: str, access_token: str = "") -> dict:
     with httpx.Client(timeout=30.0) as client:
-        data = _gql(client, _RECEIPT_DETAIL, {"posReceiptDetailsId": receipt_id}, cookie=cookie)
+        data = _gql(client, _RECEIPT_DETAIL, {"posReceiptDetailsId": receipt_id}, access_token=access_token)
     return data["data"]["posReceiptDetails"]
