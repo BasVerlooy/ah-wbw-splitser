@@ -44,6 +44,9 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE receipt_products ADD COLUMN weight_unit TEXT",
             "ALTER TABLE split_groups ADD COLUMN payed_by_roommate_id INTEGER REFERENCES roommates(id)",
             "ALTER TABLE roommates ADD COLUMN is_default_payer INTEGER",
+            "ALTER TABLE receipts ADD COLUMN stamps_quantity INTEGER",
+            "ALTER TABLE receipts ADD COLUMN stamps_amount REAL",
+            "ALTER TABLE receipts ADD COLUMN stamps_fetched_at TEXT",
         ]:
             try:
                 conn.execute(text(stmt))
@@ -305,7 +308,8 @@ def sync_receipts(offset: int = 0, db: Session = Depends(get_db)):
     skipped = 0
 
     for r in receipts:
-        if db.get(Receipt, r["id"]):
+        existing_receipt = db.get(Receipt, r["id"])
+        if existing_receipt and existing_receipt.stamps_fetched_at:
             skipped += 1
             continue
 
@@ -313,6 +317,19 @@ def sync_receipts(offset: int = 0, db: Session = Depends(get_db)):
             detail = ah_client.fetch_receipt_detail(r["id"], access_token=ah_token)
         except httpx.HTTPStatusError as exc:
             raise _friendly_ah_error(exc) from exc
+
+        stamps = detail.get("stamps")
+        stamps_quantity = stamps.get("quantity") if stamps else None
+        stamps_amount = (stamps.get("amount") or {}).get("amount") if stamps else None
+
+        if existing_receipt:
+            existing_receipt.stamps_quantity = stamps_quantity
+            existing_receipt.stamps_amount = stamps_amount
+            existing_receipt.stamps_fetched_at = datetime.now(timezone.utc).isoformat()
+            db.commit()
+            skipped += 1
+            continue
+
         address = detail.get("address") or {}
 
         receipt = Receipt(
@@ -324,6 +341,9 @@ def sync_receipts(offset: int = 0, db: Session = Depends(get_db)):
             address_postal_code=address.get("postalCode"),
             address_street=address.get("street"),
             address_house_number=address.get("houseNumber"),
+            stamps_quantity=stamps_quantity,
+            stamps_amount=stamps_amount,
+            stamps_fetched_at=datetime.now(timezone.utc).isoformat(),
             fetched_at=datetime.now(timezone.utc).isoformat(),
         )
         db.add(receipt)
@@ -392,6 +412,10 @@ def list_receipts(db: Session = Depends(get_db)):
             }),
             "has_splits": bool(r.split_groups),
             "store_info": r.store_info,
+            "stamps": {
+                "quantity": r.stamps_quantity,
+                "amount": r.stamps_amount,
+            } if r.stamps_fetched_at else None,
             "address": {
                 "city": r.address_city,
                 "postal_code": r.address_postal_code,
@@ -416,6 +440,10 @@ def get_receipt(receipt_id: str, db: Session = Depends(get_db)):
         "date_time": receipt.date_time,
         "total_amount": receipt.total_amount,
         "store_info": receipt.store_info,
+        "stamps": {
+            "quantity": receipt.stamps_quantity,
+            "amount": receipt.stamps_amount,
+        } if receipt.stamps_fetched_at else None,
         "address": {
             "city": receipt.address_city,
             "postal_code": receipt.address_postal_code,

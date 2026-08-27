@@ -31,6 +31,9 @@ class Receipt(Base):
     address_postal_code = Column(String, nullable=True)
     address_street = Column(String, nullable=True)
     address_house_number = Column(String, nullable=True)
+    stamps_quantity = Column(Integer, nullable=True)
+    stamps_amount = Column(Float, nullable=True)
+    stamps_fetched_at = Column(String, nullable=True)
     fetched_at = Column(String, nullable=True)
 
     products = relationship("ReceiptProduct", back_populates="receipt", cascade="all, delete-orphan")
