@@ -17,6 +17,7 @@ export default function ReceiptsTable({ receipts }) {
           <th>Store</th>
           <th>Address</th>
           <th>Total</th>
+          <th>Koopzegels</th>
           <th>Splits</th>
           <th></th>
         </tr>
@@ -28,6 +29,11 @@ export default function ReceiptsTable({ receipts }) {
             <td className="muted">{r.store_info ?? '—'}</td>
             <td className="muted">{formatAddress(r.address) ?? '—'}</td>
             <td>€ {r.total_amount?.toFixed(2) ?? '—'}</td>
+            <td className="muted">
+              {r.stamps?.quantity > 0
+                ? (r.koopzegel_buyer?.name ?? '✕')
+                : '—'}
+            </td>
             <td className="muted">
               {r.has_splits ? `${r.split_product_count}/${r.product_count}` : '—'}
             </td>

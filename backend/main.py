@@ -11,17 +11,17 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, object_session
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
-logger = logging.getLogger("backend")
-
 from sqlalchemy import text
 
 from . import ah_auth, ah_client, splitser_client
 from .db import (
-    Base, Receipt, ReceiptDiscount, ReceiptProduct,
+    Base, KoopzegelBuyer, Receipt, ReceiptDiscount, ReceiptProduct,
     Roommate, Setting, SplitGroup, SplitGroupProduct, SplitGroupRoommate,
     engine, get_db,
 )
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+logger = logging.getLogger("backend")
 
 load_dotenv()
 
@@ -44,6 +44,10 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE receipt_products ADD COLUMN weight_unit TEXT",
             "ALTER TABLE split_groups ADD COLUMN payed_by_roommate_id INTEGER REFERENCES roommates(id)",
             "ALTER TABLE roommates ADD COLUMN is_default_payer INTEGER",
+            "ALTER TABLE receipts ADD COLUMN stamps_quantity INTEGER",
+            "ALTER TABLE receipts ADD COLUMN stamps_amount REAL",
+            "ALTER TABLE receipts ADD COLUMN stamps_fetched_at TEXT",
+            "ALTER TABLE receipts ADD COLUMN koopzegel_buyer_id INTEGER REFERENCES koopzegel_buyers(id)",
         ]:
             try:
                 conn.execute(text(stmt))
@@ -86,6 +90,14 @@ class RoommateUpdate(BaseModel):
     is_default_payer: Optional[bool] = None
 
 
+class KoopzegelBuyerCreate(BaseModel):
+    name: str
+
+
+class KoopzegelBuyerUpdate(BaseModel):
+    buyer_id: Optional[int] = None
+
+
 class SplitserExpenseIn(BaseModel):
     expense_id: str
 
@@ -122,6 +134,18 @@ def _normalize_name(name: str) -> str:
     name = name.lower()
     name = re.sub(r'^ah\s+', '', name)
     return re.sub(r'[^a-z0-9]', '', name)
+
+
+def _koopzegel_buyer_dict(buyer: KoopzegelBuyer) -> dict:
+    return {"id": buyer.id, "name": buyer.name}
+
+
+def _receipt_koopzegel_buyer_dict(receipt: Receipt) -> Optional[dict]:
+    return (
+        _koopzegel_buyer_dict(receipt.koopzegel_buyer)
+        if receipt.koopzegel_buyer
+        else None
+    )
 
 
 def _match_discounts_to_products(products, discounts) -> dict[int, dict]:
@@ -305,7 +329,8 @@ def sync_receipts(offset: int = 0, db: Session = Depends(get_db)):
     skipped = 0
 
     for r in receipts:
-        if db.get(Receipt, r["id"]):
+        existing_receipt = db.get(Receipt, r["id"])
+        if existing_receipt and existing_receipt.stamps_fetched_at:
             skipped += 1
             continue
 
@@ -313,6 +338,19 @@ def sync_receipts(offset: int = 0, db: Session = Depends(get_db)):
             detail = ah_client.fetch_receipt_detail(r["id"], access_token=ah_token)
         except httpx.HTTPStatusError as exc:
             raise _friendly_ah_error(exc) from exc
+
+        stamps = detail.get("stamps")
+        stamps_quantity = stamps.get("quantity") if stamps else None
+        stamps_amount = (stamps.get("amount") or {}).get("amount") if stamps else None
+
+        if existing_receipt:
+            existing_receipt.stamps_quantity = stamps_quantity
+            existing_receipt.stamps_amount = stamps_amount
+            existing_receipt.stamps_fetched_at = datetime.now(timezone.utc).isoformat()
+            db.commit()
+            skipped += 1
+            continue
+
         address = detail.get("address") or {}
 
         receipt = Receipt(
@@ -324,6 +362,9 @@ def sync_receipts(offset: int = 0, db: Session = Depends(get_db)):
             address_postal_code=address.get("postalCode"),
             address_street=address.get("street"),
             address_house_number=address.get("houseNumber"),
+            stamps_quantity=stamps_quantity,
+            stamps_amount=stamps_amount,
+            stamps_fetched_at=datetime.now(timezone.utc).isoformat(),
             fetched_at=datetime.now(timezone.utc).isoformat(),
         )
         db.add(receipt)
@@ -392,6 +433,11 @@ def list_receipts(db: Session = Depends(get_db)):
             }),
             "has_splits": bool(r.split_groups),
             "store_info": r.store_info,
+            "stamps": {
+                "quantity": r.stamps_quantity,
+                "amount": r.stamps_amount,
+            } if r.stamps_fetched_at else None,
+            "koopzegel_buyer": _receipt_koopzegel_buyer_dict(r),
             "address": {
                 "city": r.address_city,
                 "postal_code": r.address_postal_code,
@@ -416,6 +462,11 @@ def get_receipt(receipt_id: str, db: Session = Depends(get_db)):
         "date_time": receipt.date_time,
         "total_amount": receipt.total_amount,
         "store_info": receipt.store_info,
+        "stamps": {
+            "quantity": receipt.stamps_quantity,
+            "amount": receipt.stamps_amount,
+        } if receipt.stamps_fetched_at else None,
+        "koopzegel_buyer": _receipt_koopzegel_buyer_dict(receipt),
         "address": {
             "city": receipt.address_city,
             "postal_code": receipt.address_postal_code,
@@ -446,6 +497,100 @@ def get_receipt(receipt_id: str, db: Session = Depends(get_db)):
             for d in receipt.discounts
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# Koopzegel buyers
+# ---------------------------------------------------------------------------
+
+
+@app.get("/koopzegel-summary")
+def get_koopzegel_summary(db: Session = Depends(get_db)):
+    buyers = db.query(KoopzegelBuyer).order_by(KoopzegelBuyer.name).all()
+    totals = {
+        buyer.id: {"id": buyer.id, "name": buyer.name, "quantity": 0, "amount": 0.0}
+        for buyer in buyers
+    }
+    unassigned = {"quantity": 0, "amount": 0.0}
+
+    receipts = db.query(Receipt).filter(Receipt.stamps_quantity.is_not(None)).all()
+    for receipt in receipts:
+        quantity = receipt.stamps_quantity or 0
+        amount = receipt.stamps_amount or 0.0
+        if receipt.koopzegel_buyer_id is None:
+            unassigned["quantity"] += quantity
+            unassigned["amount"] += amount
+            continue
+        buyer_total = totals[receipt.koopzegel_buyer_id]
+        buyer_total["quantity"] += quantity
+        buyer_total["amount"] += amount
+
+    return {
+        "quantity": sum(total["quantity"] for total in totals.values()) + unassigned["quantity"],
+        "amount": sum(total["amount"] for total in totals.values()) + unassigned["amount"],
+        "buyers": list(totals.values()),
+        "unassigned": unassigned,
+    }
+
+
+@app.get("/koopzegel-buyers")
+def list_koopzegel_buyers(db: Session = Depends(get_db)):
+    return [
+        _koopzegel_buyer_dict(buyer)
+        for buyer in db.query(KoopzegelBuyer).order_by(KoopzegelBuyer.name).all()
+    ]
+
+
+@app.post("/koopzegel-buyers", status_code=201)
+def create_koopzegel_buyer(body: KoopzegelBuyerCreate, db: Session = Depends(get_db)):
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Buyer name is required")
+    if db.query(KoopzegelBuyer).filter(KoopzegelBuyer.name == name).first():
+        raise HTTPException(status_code=409, detail="Koopzegel buyer already exists")
+    buyer = KoopzegelBuyer(name=name)
+    db.add(buyer)
+    db.commit()
+    db.refresh(buyer)
+    return _koopzegel_buyer_dict(buyer)
+
+
+@app.delete("/koopzegel-buyers/{buyer_id}", status_code=204)
+def delete_koopzegel_buyer(buyer_id: int, db: Session = Depends(get_db)):
+    buyer = db.get(KoopzegelBuyer, buyer_id)
+    if not buyer:
+        raise HTTPException(status_code=404, detail="Koopzegel buyer not found")
+    if buyer.receipts:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot remove a Koopzegel buyer assigned to receipts",
+        )
+    db.delete(buyer)
+    db.commit()
+
+
+@app.patch("/receipts/{receipt_id}/koopzegel-buyer")
+def update_receipt_koopzegel_buyer(
+    receipt_id: str,
+    body: KoopzegelBuyerUpdate,
+    db: Session = Depends(get_db),
+):
+    receipt = db.get(Receipt, receipt_id)
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+    if receipt.stamps_quantity is None:
+        raise HTTPException(status_code=400, detail="Receipt has no Koopzegels")
+
+    buyer = None
+    if body.buyer_id is not None:
+        buyer = db.get(KoopzegelBuyer, body.buyer_id)
+        if not buyer:
+            raise HTTPException(status_code=404, detail="Koopzegel buyer not found")
+
+    receipt.koopzegel_buyer = buyer
+    db.commit()
+    db.refresh(receipt)
+    return {"koopzegel_buyer": _receipt_koopzegel_buyer_dict(receipt)}
 
 
 # ---------------------------------------------------------------------------
