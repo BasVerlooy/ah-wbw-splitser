@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, object_session
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("backend")
 
-from sqlalchemy import text
+from sqlalchemy import func, text
 
 from . import ah_auth, ah_client, splitser_client
 from .db import (
@@ -502,6 +502,19 @@ def get_receipt(receipt_id: str, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 # Koopzegel buyers
 # ---------------------------------------------------------------------------
+
+
+@app.get("/koopzegel-summary")
+def get_koopzegel_summary(db: Session = Depends(get_db)):
+    quantity, amount = (
+        db.query(
+            func.coalesce(func.sum(Receipt.stamps_quantity), 0),
+            func.coalesce(func.sum(Receipt.stamps_amount), 0),
+        )
+        .filter(Receipt.stamps_quantity.is_not(None))
+        .one()
+    )
+    return {"quantity": int(quantity), "amount": float(amount)}
 
 
 @app.get("/koopzegel-buyers")

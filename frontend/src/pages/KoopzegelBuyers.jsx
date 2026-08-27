@@ -3,12 +3,21 @@ import { api } from '../api'
 
 export default function KoopzegelBuyers() {
   const [buyers, setBuyers] = useState([])
+  const [summary, setSummary] = useState(null)
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    api.get('/koopzegel-buyers').then(setBuyers).catch((loadError) => setError(loadError.message))
+    Promise.all([
+      api.get('/koopzegel-buyers'),
+      api.get('/koopzegel-summary'),
+    ])
+      .then(([loadedBuyers, loadedSummary]) => {
+        setBuyers(loadedBuyers)
+        setSummary(loadedSummary)
+      })
+      .catch((loadError) => setError(loadError.message))
   }, [])
 
   async function addBuyer(event) {
@@ -40,6 +49,16 @@ export default function KoopzegelBuyers() {
   return (
     <div>
       <h1>Koopzegel buyers</h1>
+      <div className="card">
+        <h2>Your Koopzegels</h2>
+        {summary ? (
+          <p style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>
+            {summary.quantity} Koopzegels · €{summary.amount.toFixed(2)}
+          </p>
+        ) : (
+          <p className="muted" style={{ margin: 0 }}>Loading total…</p>
+        )}
+      </div>
       <div className="card">
         <h2>Add buyer</h2>
         <form onSubmit={addBuyer} className="row">
