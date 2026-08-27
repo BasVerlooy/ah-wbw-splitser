@@ -11,10 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, object_session
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
-logger = logging.getLogger("backend")
-
-from sqlalchemy import func, text
+from sqlalchemy import text
 
 from . import ah_auth, ah_client, splitser_client
 from .db import (
@@ -22,6 +19,9 @@ from .db import (
     Roommate, Setting, SplitGroup, SplitGroupProduct, SplitGroupRoommate,
     engine, get_db,
 )
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+logger = logging.getLogger("backend")
 
 load_dotenv()
 
@@ -506,15 +506,31 @@ def get_receipt(receipt_id: str, db: Session = Depends(get_db)):
 
 @app.get("/koopzegel-summary")
 def get_koopzegel_summary(db: Session = Depends(get_db)):
-    quantity, amount = (
-        db.query(
-            func.coalesce(func.sum(Receipt.stamps_quantity), 0),
-            func.coalesce(func.sum(Receipt.stamps_amount), 0),
-        )
-        .filter(Receipt.stamps_quantity.is_not(None))
-        .one()
-    )
-    return {"quantity": int(quantity), "amount": float(amount)}
+    buyers = db.query(KoopzegelBuyer).order_by(KoopzegelBuyer.name).all()
+    totals = {
+        buyer.id: {"id": buyer.id, "name": buyer.name, "quantity": 0, "amount": 0.0}
+        for buyer in buyers
+    }
+    unassigned = {"quantity": 0, "amount": 0.0}
+
+    receipts = db.query(Receipt).filter(Receipt.stamps_quantity.is_not(None)).all()
+    for receipt in receipts:
+        quantity = receipt.stamps_quantity or 0
+        amount = receipt.stamps_amount or 0.0
+        if receipt.koopzegel_buyer_id is None:
+            unassigned["quantity"] += quantity
+            unassigned["amount"] += amount
+            continue
+        buyer_total = totals[receipt.koopzegel_buyer_id]
+        buyer_total["quantity"] += quantity
+        buyer_total["amount"] += amount
+
+    return {
+        "quantity": sum(total["quantity"] for total in totals.values()) + unassigned["quantity"],
+        "amount": sum(total["amount"] for total in totals.values()) + unassigned["amount"],
+        "buyers": list(totals.values()),
+        "unassigned": unassigned,
+    }
 
 
 @app.get("/koopzegel-buyers")

@@ -52,9 +52,36 @@ export default function KoopzegelBuyers() {
       <div className="card">
         <h2>Your Koopzegels</h2>
         {summary ? (
-          <p style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>
-            {summary.quantity} Koopzegels · €{summary.amount.toFixed(2)}
-          </p>
+          <>
+            <p style={{ margin: '0 0 0.75rem', fontSize: '1.1rem', fontWeight: 600 }}>
+              {summary.quantity} Koopzegels · €{summary.amount.toFixed(2)}
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Buyer</th>
+                  <th>Koopzegels</th>
+                  <th>Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary.buyers.map((buyer) => (
+                  <tr key={buyer.id}>
+                    <td>{buyer.name}</td>
+                    <td>{buyer.quantity}</td>
+                    <td>€{buyer.amount.toFixed(2)}</td>
+                  </tr>
+                ))}
+                {summary.unassigned.quantity > 0 && (
+                  <tr>
+                    <td className="muted">Not selected</td>
+                    <td>{summary.unassigned.quantity}</td>
+                    <td>€{summary.unassigned.amount.toFixed(2)}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </>
         ) : (
           <p className="muted" style={{ margin: 0 }}>Loading total…</p>
         )}
