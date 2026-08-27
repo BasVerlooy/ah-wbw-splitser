@@ -8,6 +8,10 @@ export default function ReceiptDetail() {
   const backTo = navState?.from ?? '/receipts'
   const [receipt, setReceipt] = useState(null)
   const [roommates, setRoommates] = useState([])
+  const [koopzegelBuyers, setKoopzegelBuyers] = useState([])
+  const [koopzegelBuyerId, setKoopzegelBuyerId] = useState('')
+  const [savingKoopzegelBuyer, setSavingKoopzegelBuyer] = useState(false)
+  const [koopzegelBuyerError, setKoopzegelBuyerError] = useState(null)
   const [splits, setSplits] = useState([])
   const [newName, setNewName] = useState('')
   // selectedProducts: { [productId]: quantity (null = full qty) }
@@ -25,13 +29,16 @@ export default function ReceiptDetail() {
   const [deletingFromSplitser, setDeletingFromSplitser] = useState(null)
 
   async function load() {
-    const [r, rm, s] = await Promise.all([
+    const [r, rm, buyers, s] = await Promise.all([
       api.get(`/receipts/${id}`),
       api.get('/roommates'),
+      api.get('/koopzegel-buyers'),
       api.get(`/receipts/${id}/splits`),
     ])
     setReceipt(r)
     setRoommates(rm)
+    setKoopzegelBuyers(buyers)
+    setKoopzegelBuyerId(r.koopzegel_buyer?.id ?? '')
     setSplits(s.splits)
     setSelectedRoommateIds(rm.map((r) => r.id))
     const defaultPayer = rm.find((r) => r.is_default_payer)
@@ -207,6 +214,21 @@ export default function ReceiptDetail() {
     }
   }
 
+  async function updateKoopzegelBuyer(event) {
+    const buyerId = event.target.value ? Number(event.target.value) : null
+    setSavingKoopzegelBuyer(true)
+    setKoopzegelBuyerError(null)
+    try {
+      const result = await api.patch(`/receipts/${id}/koopzegel-buyer`, { buyer_id: buyerId })
+      setKoopzegelBuyerId(result.koopzegel_buyer?.id ?? '')
+      setReceipt((previous) => ({ ...previous, koopzegel_buyer: result.koopzegel_buyer }))
+    } catch (error) {
+      setKoopzegelBuyerError(error.message)
+    } finally {
+      setSavingKoopzegelBuyer(false)
+    }
+  }
+
   if (!receipt) return <p className="muted">Loading…</p>
 
   const products = receipt.products
@@ -232,6 +254,36 @@ export default function ReceiptDetail() {
       <p className="muted" style={{ marginBottom: '1.75rem' }}>
         ID: {receipt.id} | Total: €{receipt.total_amount?.toFixed(2)}
       </p>
+
+      {receipt.stamps?.quantity > 0 && (
+        <div className="card">
+          <h2>Koopzegels</h2>
+          <p className="muted" style={{ marginTop: 0 }}>
+            {receipt.stamps.quantity} Koopzegels (€{receipt.stamps.amount?.toFixed(2) ?? '0.00'})
+          </p>
+          {koopzegelBuyers.length > 0 ? (
+            <label style={{ display: 'block', fontWeight: 600 }}>
+              Bought by
+              <select
+                value={koopzegelBuyerId}
+                onChange={updateKoopzegelBuyer}
+                disabled={savingKoopzegelBuyer}
+                style={{ display: 'block', marginTop: '0.35rem' }}
+              >
+                <option value="">Select buyer…</option>
+                {koopzegelBuyers.map((buyer) => (
+                  <option key={buyer.id} value={buyer.id}>{buyer.name}</option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <p className="muted">
+              Add a buyer in <Link to="/koopzegel-buyers">Koopzegels</Link> before assigning this receipt.
+            </p>
+          )}
+          {koopzegelBuyerError && <p style={{ color: '#c00', marginBottom: 0 }}>{koopzegelBuyerError}</p>}
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2.5rem', alignItems: 'start' }}>
 

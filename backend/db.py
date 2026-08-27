@@ -20,6 +20,15 @@ class Base(DeclarativeBase):
     pass
 
 
+class KoopzegelBuyer(Base):
+    __tablename__ = "koopzegel_buyers"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, unique=True, nullable=False)
+
+    receipts = relationship("Receipt", back_populates="koopzegel_buyer")
+
+
 class Receipt(Base):
     __tablename__ = "receipts"
 
@@ -34,8 +43,10 @@ class Receipt(Base):
     stamps_quantity = Column(Integer, nullable=True)
     stamps_amount = Column(Float, nullable=True)
     stamps_fetched_at = Column(String, nullable=True)
+    koopzegel_buyer_id = Column(Integer, ForeignKey("koopzegel_buyers.id"), nullable=True)
     fetched_at = Column(String, nullable=True)
 
+    koopzegel_buyer = relationship("KoopzegelBuyer", back_populates="receipts")
     products = relationship("ReceiptProduct", back_populates="receipt", cascade="all, delete-orphan")
     discounts = relationship("ReceiptDiscount", back_populates="receipt", cascade="all, delete-orphan")
     split_groups = relationship("SplitGroup", back_populates="receipt", cascade="all, delete-orphan")
