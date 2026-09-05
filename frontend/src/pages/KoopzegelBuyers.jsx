@@ -3,19 +3,23 @@ import { api } from '../api'
 
 export default function KoopzegelBuyers() {
   const [buyers, setBuyers] = useState([])
+  const [stores, setStores] = useState([])
   const [summary, setSummary] = useState(null)
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
+  const [savingStore, setSavingStore] = useState(null)
   const [error, setError] = useState(null)
 
   useEffect(() => {
     Promise.all([
       api.get('/koopzegel-buyers'),
       api.get('/koopzegel-summary'),
+      api.get('/koopzegel-stores'),
     ])
-      .then(([loadedBuyers, loadedSummary]) => {
+      .then(([loadedBuyers, loadedSummary, loadedStores]) => {
         setBuyers(loadedBuyers)
         setSummary(loadedSummary)
+        setStores(loadedStores)
       })
       .catch((loadError) => setError(loadError.message))
   }, [])
@@ -44,6 +48,32 @@ export default function KoopzegelBuyers() {
     } catch (deleteError) {
       setError(deleteError.message)
     }
+  }
+
+  async function updateStoreBuyer(storeInfo, value) {
+    const buyerId = value ? Number(value) : null
+    setSavingStore(storeInfo)
+    setError(null)
+    try {
+      const result = await api.put('/koopzegel-stores', {
+        store_info: storeInfo,
+        buyer_id: buyerId,
+      })
+      setStores((previous) => previous.map((store) => (
+        store.store_info === storeInfo ? { ...store, buyer: result.buyer } : store
+      )))
+      setSummary(await api.get('/koopzegel-summary'))
+    } catch (updateError) {
+      setError(updateError.message)
+    } finally {
+      setSavingStore(null)
+    }
+  }
+
+  function storeAddress(store) {
+    const address = store.address
+    const street = [address.street, address.house_number].filter(Boolean).join(' ')
+    return [street, address.city].filter(Boolean).join(', ') || `Store ${store.store_info}`
   }
 
   return (
@@ -101,6 +131,49 @@ export default function KoopzegelBuyers() {
           </button>
         </form>
         {error && <p style={{ color: '#c00', marginTop: '0.5rem' }}>{error}</p>}
+      </div>
+
+      <div className="card">
+        <h2>Stores</h2>
+        <p className="muted">
+          Link a store to a buyer to automatically assign existing and future Koopzegel receipts.
+        </p>
+        {stores.length > 0 ? (
+          <table>
+            <thead>
+              <tr>
+                <th>Store</th>
+                <th>Receipts</th>
+                <th>Buyer</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stores.map((store) => (
+                <tr key={store.store_info}>
+                  <td>
+                    {storeAddress(store)}
+                    <div className="muted">Store {store.store_info}</div>
+                  </td>
+                  <td>{store.koopzegel_receipt_count} with Koopzegels</td>
+                  <td>
+                    <select
+                      value={store.buyer?.id ?? ''}
+                      onChange={(event) => updateStoreBuyer(store.store_info, event.target.value)}
+                      disabled={savingStore === store.store_info || buyers.length === 0}
+                    >
+                      <option value="">Not linked</option>
+                      {buyers.map((buyer) => (
+                        <option key={buyer.id} value={buyer.id}>{buyer.name}</option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="muted" style={{ marginBottom: 0 }}>No stores found in synced receipts.</p>
+        )}
       </div>
 
       {buyers.length > 0 && (

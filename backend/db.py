@@ -27,6 +27,16 @@ class KoopzegelBuyer(Base):
     name = Column(String, unique=True, nullable=False)
 
     receipts = relationship("Receipt", back_populates="koopzegel_buyer")
+    stores = relationship("KoopzegelStore", back_populates="buyer")
+
+
+class KoopzegelStore(Base):
+    __tablename__ = "koopzegel_stores"
+
+    store_info = Column(String, primary_key=True)
+    buyer_id = Column(Integer, ForeignKey("koopzegel_buyers.id"), nullable=False)
+
+    buyer = relationship("KoopzegelBuyer", back_populates="stores")
 
 
 class Receipt(Base):
